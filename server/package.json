@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node -e \"console.log('No build step required: plain JavaScript agent')\"",
-    "start": "node agent/auraAgent.js start",
+    "start": "node server.js",
     "dev": "nodemon server.js",
     "server": "node server.js"
   },
