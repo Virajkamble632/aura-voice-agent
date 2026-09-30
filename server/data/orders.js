@@ -28,14 +28,6 @@ const orders = {
         ordered: "3 hours ago",
         cancellationEligible: true,
     },
-    "ORD-104": {
-        orderId: "ORD-104",
-        customer: "Rohit Patel",
-        product: "Toner",
-        amount: 850, 
-        status: "Cancelled",
-        ordered: "3 hours ago",
-    },
 }
 
 export default orders;
