@@ -5,8 +5,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "build": "node -e \"console.log('No build step required: plain JavaScript agent')\"",
+    "start": "node agent/auraAgent.js start",
+    "dev": "nodemon server.js",
+    "server": "node server.js"
   },
   "keywords": [],
   "author": "",

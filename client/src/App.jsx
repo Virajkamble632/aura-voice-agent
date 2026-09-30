@@ -346,9 +346,46 @@ function VoiceInterface({ onEndCall }) {
   useEffect(() => {
     if (!localParticipant) return;
 
-    setMicEnabled(
-      localParticipant.isMicrophoneEnabled
-    );
+    // Explicitly enable the microphone once the local participant is
+    // available. `LiveKitRoom audio={true}` already requests the mic, but
+    // this hardens against any lifecycle timing where publishing is skipped.
+    const enableMic = async () => {
+      try {
+        if (!localParticipant.isMicrophoneEnabled) {
+          await localParticipant.setMicrophoneEnabled(true);
+        }
+
+        setMicEnabled(
+          localParticipant.isMicrophoneEnabled
+        );
+
+        if (import.meta.env.DEV) {
+          console.log(
+            "🎤 Microphone enabled:",
+            localParticipant.isMicrophoneEnabled
+          );
+
+          console.log(
+            "📡 Published audio tracks:",
+            [
+              ...localParticipant.audioTrackPublications.values(),
+            ].map((publication) => ({
+              source: publication.source,
+              trackSid: publication.trackSid,
+              muted: publication.isMuted,
+              kind: publication.track?.kind,
+            }))
+          );
+        }
+      } catch (error) {
+        console.error(
+          "🎤 Failed to enable microphone:",
+          error
+        );
+      }
+    };
+
+    enableMic();
   }, [localParticipant]);
 
   
@@ -633,8 +670,12 @@ export default function App() {
       setLoading(true);
       setCallResult(null);
 
+      // Backend base URL comes from VITE_API_URL. Never hardcode it.
+      const apiBase =
+        import.meta.env.VITE_API_URL || "http://localhost:5000";
+
       const response = await fetch(
-        "http://localhost:5000/api/livekit/token"
+        `${apiBase}/api/livekit/token`
       );
 
       if (!response.ok) {
@@ -719,6 +760,24 @@ export default function App() {
         connect={true}
         audio={true}
         video={false}
+        onError={(error) =>
+          console.error("LiveKit room error:", error)
+        }
+        onMediaDeviceFailure={(failure, kind) => {
+          console.error(
+            "Media device failure:",
+            failure,
+            kind
+          );
+
+          if (kind === "audioinput") {
+            alert(
+              "Microphone access failed. " +
+                "Please allow microphone permission in your browser " +
+                "and try again."
+            );
+          }
+        }}
       >
         <VoiceInterface onEndCall={endCall} />
       </LiveKitRoom>

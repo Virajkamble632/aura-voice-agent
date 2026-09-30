@@ -6,6 +6,18 @@ const router = express.Router();
 
 router.get("/token", async (req, res) => {
   try {
+    const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL } =
+      process.env;
+
+    if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "LiveKit server configuration is missing on the backend. " +
+          "Check LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET.",
+      });
+    }
+
     // Create a unique room for every call
     const roomName = `aura-room-${Date.now()}`;
 
@@ -13,10 +25,11 @@ router.get("/token", async (req, res) => {
       req.query.name || `customer-${Date.now()}`;
 
     const token = new AccessToken(
-      process.env.LIVEKIT_API_KEY,
-      process.env.LIVEKIT_API_SECRET,
+      LIVEKIT_API_KEY,
+      LIVEKIT_API_SECRET,
       {
         identity: participantName,
+        ttl: "30m", // short-lived token, refreshed per call
       }
     );
 
@@ -25,9 +38,12 @@ router.get("/token", async (req, res) => {
       room: roomName,
       canPublish: true,
       canSubscribe: true,
+      canPublishData: true,
+      canUpdateOwnMetadata: true,
     });
 
-    // Explicitly dispatch Aura AI agent
+    // Explicitly dispatch Aura AI agent into the room.
+    // Keep this — it is how the deployed "aura-agent" is invoked.
     token.roomConfig = new RoomConfiguration({
       agents: [
         new RoomAgentDispatch({
@@ -41,7 +57,7 @@ router.get("/token", async (req, res) => {
     res.json({
       success: true,
       token: jwt,
-      url: process.env.LIVEKIT_URL,
+      url: LIVEKIT_URL,
       roomName,
     });
   } catch (error) {

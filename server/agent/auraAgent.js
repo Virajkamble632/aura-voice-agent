@@ -361,7 +361,28 @@ export default defineAgent({
        VAD
     ======================================================= */
 
-    const vad = ctx.proc?.userData?.vad;
+    let vad = ctx.proc?.userData?.vad;
+
+    if (!vad) {
+      // Prewarm normally provides the Silero VAD via proc.userData.
+      // If it is ever missing, load it here so the session NEVER falls
+      // back to the LiveKit gateway inference VAD, which has been shown
+      // to be unreliable on some regions (agent "hears" nothing).
+      console.warn(
+        "⚠️ Prewarm Silero VAD not found — loading inside entry"
+      );
+
+      vad = await silero.VAD.load().catch((error) => {
+        console.error("❌ Silero VAD fallback load failed:", error);
+        return undefined;
+      });
+
+      if (vad) {
+        console.log("✅ Fallback Silero VAD loaded in entry");
+      }
+    } else {
+      console.log("✅ Using prewarmed Silero VAD");
+    }
 
     /* =======================================================
        AGENT SESSION
@@ -421,28 +442,36 @@ export default defineAgent({
       /* -----------------------------------------------------
          TURN HANDLING
 
-         Keep this conservative for stability.
+         turnDetection: "vad"
+           Explicit and deterministic turn-taking driven by the
+           LOCAL Silero VAD start/stop cues. This does NOT depend
+           on the LiveKit inference "turn-detector-v1" cloud EOT
+           model, which has been observed to be unavailable or
+           slow on some regions/projects — leaving the agent able
+           to transcribe but never committing a user turn.
 
-         300ms minimum endpoint
-         1500ms maximum endpoint
+         500ms endpointing minimum (lets Deepgram finalize)
+         1500ms endpointing maximum
 
          This prevents the very long 2.5–3+ second waiting
-         behavior seen in your previous logs.
+         behavior seen in previous logs.
       ----------------------------------------------------- */
 
       turnHandling: {
+        turnDetection: "vad",
+
         endpointing: {
           mode: "fixed",
-          minDelay: 300,
+          minDelay: 500,
           maxDelay: 1500,
         },
 
         /* ---------------------------------------------------
            IMPORTANT
 
-           Keep interruption disabled because your previous
-           tests showed voice instability when changing
-           interruption behavior.
+           Keep interruption disabled because previous tests
+           showed voice instability when changing interruption
+           behavior.
 
            Aria should finish her response cleanly.
         --------------------------------------------------- */
@@ -458,7 +487,7 @@ export default defineAgent({
 
            preemptiveGeneration
 
-           because your previous logs showed preemptive
+           because previous logs showed preemptive
            generation followed by LLM timeout/retry behavior.
         --------------------------------------------------- */
       },
@@ -481,6 +510,40 @@ export default defineAgent({
     });
 
     console.log("✅ Agent session started");
+
+
+
+    session.on("user_input_transcribed", (event) => {
+      const text = (event?.transcript || "").trim();
+      if (text) {
+        console.log(
+          `🗣️ STT${event?.isFinal ? " (final)" : ""}: "${text}"`
+        );
+      }
+    });
+
+    session.on("user_state_changed", (event) => {
+      console.log(
+        `👂 User state: ${event?.oldState} -> ${event?.newState}`
+      );
+    });
+
+    session.on("conversation_item_added", (event) => {
+      const item = event?.item;
+      if (item?.role === "user" && item?.textContent) {
+        console.log(
+          `💬 User turn committed: "${String(item.textContent).trim()}"`
+        );
+      } else if (item?.role === "assistant" && item?.textContent) {
+        console.log(
+          `💬 Aria reply: "${String(item.textContent).trim()}"`
+        );
+      }
+    });
+
+    session.on("error", (error) => {
+      console.error("❌ AgentSession error:", error);
+    });
 
     /* =======================================================
        CONNECT TO ROOM
